@@ -18,25 +18,31 @@ namespace Microsoft.Azure.Devices.Provisioning.Client.Samples
     /// </summary>
     internal class ProvisioningDeviceClientSample
     {
-        private readonly Parameters _parameters;
+        string m_IdScope;
+        string m_CertificateName;
+        string m_GlobalDeviceEndpoint;
 
-        public ProvisioningDeviceClientSample(Parameters parameters)
+
+        public ProvisioningDeviceClientSample(string IdScope, string CertificateName, string GlobalDeviceEndpoint)
         {
-            _parameters = parameters;
+            m_IdScope = IdScope;
+            m_CertificateName = CertificateName;
+            m_GlobalDeviceEndpoint = GlobalDeviceEndpoint;
+
         }
 
         public async Task RunSampleAsync()
         {
             Console.WriteLine($"Loading the certificate...");
-            using X509Certificate2 certificate = LoadProvisioningCertificate();
+            using X509Certificate2 certificate = GetClientCertificate(m_CertificateName);
             using var security = new SecurityProviderX509Certificate(certificate);
 
             Console.WriteLine($"Initializing the device provisioning client...");
 
-            using ProvisioningTransportHandler transport = GetTransportHandler();
+            using ProvisioningTransportHandler transport = new ProvisioningTransportHandlerMqtt();
             var provClient = ProvisioningDeviceClient.Create(
-                _parameters.GlobalDeviceEndpoint,
-                _parameters.IdScope,
+                m_GlobalDeviceEndpoint,
+                m_IdScope,
                 security,
                 transport);
 
@@ -60,7 +66,7 @@ namespace Microsoft.Azure.Devices.Provisioning.Client.Samples
                 certificate);
 
             Console.WriteLine($"Testing the provisioned device with IoT Hub...");
-            using var iotClient = DeviceClient.Create(result.AssignedHub, auth, _parameters.TransportType);
+            using var iotClient = DeviceClient.Create(result.AssignedHub, auth, TransportType.Mqtt);
 
             Console.WriteLine("Sending a telemetry message...");
             using var message = new Message(Encoding.UTF8.GetBytes("TestMessage"));
@@ -70,90 +76,26 @@ namespace Microsoft.Azure.Devices.Provisioning.Client.Samples
             Console.WriteLine("Finished.");
         }
 
-        private ProvisioningTransportHandler GetTransportHandler()
+        static X509Certificate2 GetClientCertificate(string name)
         {
-            return _parameters.TransportType switch
+            // open personal certificate store
+            using (X509Store store = new X509Store(StoreName.My, StoreLocation.CurrentUser))
             {
-                TransportType.Mqtt => new ProvisioningTransportHandlerMqtt(),
-                TransportType.Mqtt_Tcp_Only => new ProvisioningTransportHandlerMqtt(TransportFallbackType.TcpOnly),
-                TransportType.Mqtt_WebSocket_Only => new ProvisioningTransportHandlerMqtt(TransportFallbackType.WebSocketOnly),
-                TransportType.Amqp => new ProvisioningTransportHandlerAmqp(),
-                TransportType.Amqp_Tcp_Only => new ProvisioningTransportHandlerAmqp(TransportFallbackType.TcpOnly),
-                TransportType.Amqp_WebSocket_Only => new ProvisioningTransportHandlerAmqp(TransportFallbackType.WebSocketOnly),
-                TransportType.Http1 => new ProvisioningTransportHandlerHttp(),
-                _ => throw new NotSupportedException($"Unsupported transport type {_parameters.TransportType}"),
-            };
-        }
+                store.Open(OpenFlags.ReadOnly);
 
-        private X509Certificate2 LoadProvisioningCertificate()
-        {
-            ReadCertificatePassword();
-
-            var certificateCollection = new X509Certificate2Collection();
-            certificateCollection.Import(
-                _parameters.GetCertificatePath(),
-                _parameters.CertificatePassword,
-                X509KeyStorageFlags.UserKeySet);
-
-            X509Certificate2 certificate = null;
-
-            foreach (X509Certificate2 element in certificateCollection)
-            {
-                Console.WriteLine($"Found certificate: {element?.Thumbprint} {element?.Subject}; PrivateKey: {element?.HasPrivateKey}");
-                if (certificate == null && element.HasPrivateKey)
+                foreach (X509Certificate2 cert in store.Certificates)
                 {
-                    certificate = element;
-                }
-                else
-                {
-                    element.Dispose();
+                    if (cert.Subject.Substring(3) != name) // exclude "CN=" prefix from name check
+                        continue;
+
+                    if (!cert.HasPrivateKey)
+                        continue;
+
+                    return cert; // return matching certificate
                 }
             }
 
-            if (certificate == null)
-            {
-                throw new FileNotFoundException($"{_parameters.CertificateName} did not contain any certificate with a private key.");
-            }
-
-            Console.WriteLine($"Using certificate {certificate.Thumbprint} {certificate.Subject}");
-
-            return certificate;
-        }
-
-        private void ReadCertificatePassword()
-        {
-            if (!string.IsNullOrWhiteSpace(_parameters.CertificatePassword))
-            {
-                return;
-            }
-
-            var password = new StringBuilder();
-            Console.WriteLine($"Enter the PFX password for {_parameters.CertificateName}:");
-
-            while (true)
-            {
-                ConsoleKeyInfo key = Console.ReadKey(true);
-                if (key.Key == ConsoleKey.Backspace)
-                {
-                    if (password.Length > 0)
-                    {
-                        password.Remove(password.Length - 1, 1);
-                        Console.Write("\b \b");
-                    }
-                }
-                else if (key.Key == ConsoleKey.Enter)
-                {
-                    Console.WriteLine();
-                    break;
-                }
-                else
-                {
-                    Console.Write('*');
-                    password.Append(key.KeyChar);
-                }
-            }
-
-            _parameters.CertificatePassword = password.ToString();
+            throw new ApplicationException("Certificate not found");
         }
     }
 }

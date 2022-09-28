@@ -14,19 +14,18 @@ namespace Microsoft.Azure.Devices.Provisioning.Client.Samples
     {
         public static async Task<int> Main(string[] args)
         {
-            // Parse application parameters
-            Parameters parameters = null;
-            ParserResult<Parameters> result = Parser.Default.ParseArguments<Parameters>(args)
-                .WithParsed(parsedParams =>
-                {
-                    parameters = parsedParams;
-                })
-                .WithNotParsed(errors =>
-                {
-                    Environment.Exit(1);
-                });
 
-            var sample = new ProvisioningDeviceClientSample(parameters);
+            if (args.Length < 2)
+            {
+                Console.Error.WriteLine("ERROR: IdScope and CertificateName arguments missing.");
+                return -1;
+            }
+
+            string IdScope = args[0];
+            string CertificateName = args[1];
+            string GlobalDeviceEndpoint = "global.azure-devices-provisioning.net";
+
+            var sample = new ProvisioningDeviceClientSample(IdScope, CertificateName, GlobalDeviceEndpoint);
             await sample.RunSampleAsync();
 
             return 0;
