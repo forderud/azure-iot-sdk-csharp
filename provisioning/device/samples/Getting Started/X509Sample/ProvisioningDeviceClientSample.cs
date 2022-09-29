@@ -39,7 +39,7 @@ namespace Microsoft.Azure.Devices.Provisioning.Client.Samples
 
             Console.WriteLine($"Initializing the device provisioning client...");
 
-            using ProvisioningTransportHandler transport = new ProvisioningTransportHandlerMqtt();
+            using ProvisioningTransportHandler transport = new ProvisioningTransportHandlerHttp(); // Mqtt doesn't seem to support PAC proxies
             var provClient = ProvisioningDeviceClient.Create(
                 m_GlobalDeviceEndpoint,
                 m_IdScope,
@@ -66,7 +66,7 @@ namespace Microsoft.Azure.Devices.Provisioning.Client.Samples
                 certificate);
 
             Console.WriteLine($"Testing the provisioned device with IoT Hub...");
-            using var iotClient = DeviceClient.Create(result.AssignedHub, auth, TransportType.Mqtt);
+            using var iotClient = DeviceClient.Create(result.AssignedHub, auth, TransportType.Http1);
 
             Console.WriteLine("Sending a telemetry message...");
             using var message = new Message(Encoding.UTF8.GetBytes("TestMessage"));
